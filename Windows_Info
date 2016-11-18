@@ -1,0 +1,228 @@
+SYSTEM:
+OS, MEM, CPU, BIOS, Features, Timezone Info:
+
+# Display memory:
+systeminfo | findstr /C:"Total Physical Memory"
+ 
+# Display motherboard / chassis serial:
+gwmi win32_bios | fl SerialNumber
+ 
+# Display BIOS version and date:
+systeminfo | findstr /I /c:bios
+msinfo32
+ 
+# Display OS version and service pack:
+$sServer = "."
+$sOS =Get-WmiObject -class Win32_OperatingSystem -computername $sServer
+$sOS | Select-Object  Caption, OSArchitecture, ServicePackMajorVersion | Format-List
+ 
+# Display OS version (cmd):
+systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
+ 
+# Display Windows features that are installed:
+Import-module servermanager ; Get-WindowsFeature | where-object {$_.Installed -eq $True} | format-list DisplayName
+ 
+# Display services running:
+Get-Service | Where-Object Status -eq Running | Sort-Object DisplayName
+ 
+# Join to customer domain:
+HPSA Script: UC_Join_Domain
+Parameters: $host $domain
+ 
+# Apply GPO and reboot:
+gpupdate /force /sync
+ 
+# Display and set time zone:
+tzutil /g (To know current time zone)
+tzutil /l (To get a list of all available time zones)
+tzutil /s <time_zone_ID> (To change time zone)
+# Time zone example:
+tzutil /s "Central Standard Time"
+tzutil /s "Eastern Standard Time"
+ 
+# NOTE: BMB standard Windows 2012 R2 kickstart example:
+00:50:56:93:4f:d8, nbuagent=7.6.0.4, hostname=S608632CH3VW03, domainname=s265174-AD01.corp, ip=10.47.61.171, customer=Not Assigned, facility=CH3 Services, subnet=255.255.255.128, gateway=10.47.61.129, mgateway=10.47.61.254, partitionsize=90, platform=generic64, osversion=windows2012r2standard, pxe_image=windows
+ 
+# NOTE: Windows 2008 R2 SP1 Service Pack HPSA (1 GB) Software policy:
+ORDM-19-Win_Service_Pack-2008R2
+ 
+# Clear XFER directory:
+rd %systemdrive%\xfer /s /q
+mkdir %systemdrive%\xfer
+echo Y|cacls %systemdrive%\xfer /G Administrators:F System:F 
+ 
+# Get differences between two text  files (PowerShell):
+Compare-Object $(Get-Content c:\scripts\x.txt) $(Get-Content c:\scripts\y.txt)
+ 
+# Show users logged in:
+query user /server:localhost
+ 
+# Display local admin list:
+net localgroup administrators
+ 
+
+NETWORK:
+DNS, Routes, NIC Team, Adapter Info:
+
+# Set DNS (old):
+Set-NetworkAdapterDNS "Local Area Connection" -DNSServer 192.168.0.44, 192.168.0.45 -Computer PC01
+ 
+# Set DNS (new):
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses "<DNS IP>", "<DNS IP>"
+ 
+# Set DNS (wmi):
+$wmi = Get-WmiObject win32_networkadapterconfiguration -filter "ipenabled ='true'";
+$wmi.SetDNSServerSearchOrder(@("x.x.x.x","x.x.x.x"));
+ 
+# Display network routes:
+netstat -rn
+route print
+ 
+# Routes - Add a persistent route (example):
+route add -p 10.86.93.0 mask 255.255.255.240 10.86.92.33
+ 
+# Routes - Delete a route (example):
+route delete 0.0.0.0 mask 0.0.0.0 10.86.92.33
+  
+# Routes - Modify a persistent route (example):
+route change -p 10.41.0.0 mask 255.255.0.0 10.27.0.25
+ 
+# To RDP to server, change 167.x.x.x route (example):
+route change -p 167.215.232.0 mask 255.255.255.0 10.36.51.190
+ 
+# Display NIC Speed and Adapter Type (only win2012):
+Get-NetAdapter | SELECT InterFaceDescription, Status, LinkSpeed, FullDuplex | where Status -eq 'up'
+ 
+# Send IP info to text file:
+ipconfig /all > ipconfig_info.txt
+ 
+# Set DNS on adapter:
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses "<DNS IP>", "<DNS IP>"
+ 
+# Set DNS and join to domain example #1:
+netsh interface ip set dns name="Ethernet1" source=static addr=10.28.66.36 register=PRIMARY
+netsh interface ip add dns name="Ethernet1" addr=10.28.66.37 index=2
+netdom join %computername% /Domain:stars-net.com /UD:na-msmps\john.smith /PD:*
+ 
+# Example #2:
+netsh interface ip set dns name="Team_VLAN_1678" source=static addr=10.43.137.195 register=PRIMARY
+netsh interface ip add dns name="Team_VLAN_1678" addr=10.43.137.196 index=2
+netdom join %computername% /Domain:foshosted.local /UD:na-msmps\john.smith /PD:*
+ 
+# Display NIC team info:
+gwmi win32_networkadapter -filter "netconnectionstatus = 2" | select name, speed | Format-Table
+ 
+# Display NIC info, status, speed, duplex (PowerShell):
+Get-NetAdapter | SELECT InterFaceDescription, Status, LinkSpeed, FullDuplex | where Status -eq 'up'
+ 
+
+STORAGE:
+WWNs, HBAs, Volume Info
+
+# Display disk block size:
+fsutil fsinfo ntfsinfo e: | findstr 65
+     
+# Display volume type and size:
+Diskpart
+List volume
+ 
+# Get hostname, WWN, driver, and firmware info for HIE:
+hostname
+    $ComputerName | ForEach-Object {  
+        $Computer = $_      
+        $Params = @{ 
+            Namespace    = 'root\WMI'
+            class        = 'MSFC_FCAdapterHBAAttributes'
+            ComputerName = hostname 
+            ErrorAction  = 'Stop'
+            }        
+        Get-WmiObject @Params  | ForEach-Object {  
+                $hash=@{  
+                    ComputerName     = $_.__SERVER  
+                    NodeWWN          = (($_.NodeWWN) | ForEach-Object {"{0:X2}" -f $_}) -join ":" 
+                    Active           = $_.Active  
+                    DriverName       = $_.DriverName  
+                    DriverVersion    = $_.DriverVersion  
+                    FirmwareVersion  = $_.FirmwareVersion  
+                    Model            = $_.Model  
+                    ModelDescription = $_.ModelDescription  
+                    }  
+                New-Object psobject -Property $hash 
+            }#Foreach-Object(Adapter)   
+    }#Foreach-Object(Computer)
+     
+# NOTE: Emulex HBA OCManager example for HIE
+PS C:\Program Files\Emulex\Util\OCManager> .\HbaCmd.exe listhbas
+     
+Manageable HBA List
+Port WWN       : 10:00:00:90:fa:a7:05:a8
+Node WWN       : 20:00:00:90:fa:a7:05:a8
+Fabric Name    : 10:00:00:05:33:85:87:00
+Flags          : 8000f100
+Host Name      : S621615CH3SW01
+Mfg            : Emulex Corporation
+Serial No.     : CN651403B6
+Port Number    : 0
+Mode           : Initiator
+PCI Bus Number : 7
+PCI Function   : 0
+Port Type      : FC
+Model          : AJ763B/AH403A
+Port WWN       : 10:00:00:90:fa:a7:05:a9
+Node WWN       : 20:00:00:90:fa:a7:05:a9
+Fabric Name    : 00:00:00:00:00:00:00:00
+Flags          : 8000f100
+Host Name      : S621615CH3SW01
+Mfg            : Emulex Corporation
+Serial No.     : CN651403B6
+Port Number    : 1
+Mode           : Initiator
+PCI Bus Number : 7
+PCI Function   : 1
+Port Type      : FC
+Model          : AJ763B/AH403A
+ 
+ 
+
+APPLICATIONS:
+SIA:
+Managed Application - SIA (Savvis Intelligence Agent):
+
+# Windows HPSA (cmd):
+cd \usr\local\monitor
+monitor status
+ 
+# Windows HPSA (PowerShell):
+cd \usr\local\monitor
+ .\monitor.cmd status
+  
+# Linux HPSA (bash):
+/sbin/service monitor status
+ 
+# Solaris:
+/etc/init.d/monitor status
+ 
+# Windows HPSA SIA PR_FrameworkService Out of Bounds Fix (PowerShell):
+cd \usr\local\monitor
+ .\monitor.cmd restart
+ .\monitor.cmd status
+  
+# SIA AD / SQL / Managed Apps Fix (PowerShell, move .vbs to C:/xfer):
+cd c:/xfer
+.\test.vbs
+Opsware / HPSA Agent:
+Opsware/HPSA Agent
+
+# Update server to sync with HPSA
+cd C:\Program Files\Opsware\agent\pylibs\cog
+bs_hardware.bat
+ 
+# NOTE: Reinstall client: To reinstall client due to wrong routes, delete "out.txt" from c:\xfer\opsware, then run the file "runamd64.bat"
+ 
+MSSQL:
+Active Directory (AD):
+Internet Information Services (IIS):
+Remote Desktop Services (RDS):
+Lasso:
+Tripwire:
+NBU:
