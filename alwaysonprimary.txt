@@ -1,0 +1,204 @@
+Skip to content
+Skip to breadcrumbs
+Skip to header menu
+Skip to action menu
+Skip to quick search
+Quick Search
+Search
+Browse
+Pasternak, Pawel
+Dashboard
+ 
+Engineering Public Documentation
+ 
+…
+ 
+AOAG Manual Creation - Initial Node
+Share
+Add
+Tools
+AOAG Manual Creation - Initial Node
+Skip to end of metadata
+Added by Franke, Ross, last edited by Franke, Ross on Jun 10, 2016  (view change) Go to start of metadata
+
+This procedure describes how to pseudo-manually create the initial cluster & AlwaysOn Availabity Group (AOAG) on a single initial server.  Pending successful execution of this procedure, additional servers/nodes can then be added to the existing cluster via the "Additional Node" procedure: https://confluence.savvis.net/x/6tvMBg
+
+	Notes
+The instance names of all participating MSSQL instances (local to each server) can be the same or different.
+AOAGs require the Enterprise Edition of MSSQL versions 2012, 2014 & 2016, although Windows 2008+ (Std. or Ent. edition) can be utilized for the cluster nodes' OS (same version for all nodes).
+The location/path of individual databases to be joined to the AG/replicated must be identical. Example: data & tlog files for database 'replicateMe01' must exist in D:\blah\data on all participating MSSQL instances.
+If one or more CLC servers are to partake in the AOAG, at least 2 "floating" IPs must be retrieved from the CLC control portal & server(s): a cluster name IP & AOAG listener IP.  Use this procedure to get each IP: AOAG Get Floating IP From CLC
+ 
+
+Install a stand-alone MSSQL instance on the server.
+MSSQL 2012 - Automated Installation using HP SA
+MSSQL 2014 - Automated Installation using HP SA
+Bind persistent routes to specific interface(s)
+Execute the following powershell lines:
+
+$persistentRoutesScript = 'c:\xfer\bindPersistentRoutes.ps1'; 
+foreach ($route in gwmi win32_ip4persistedroutetable) {$interfaceIndex = (gwmi win32_ip4routetable | where destination -eq $route.destination).interfaceindex; add-content $persistentRoutesScript "route delete $($route.destination) mask $($route.mask) $($route.nextHop) -p"; add-content $persistentRoutesScript "route add    $($route.destination) mask $($route.mask) $($route.nextHop) if $($interfaceIndex) -p"}; 
+invoke-expression $persistentRoutesScript; 
+write-host "Executed route commands have been logged to $($persistentRoutesScript)"
+#
+Add failover cluster features
+Execute the following powershell line in the previously-used powershell window/session (for variable persistence):
+
+import-module ServerManager 
+add-windowsfeature Failover-Clustering, RSAT-Clustering-Mgmt, RSAT-Clustering-PowerShell, RSAT-Clustering-CmdInterface
+#
+Test node for clustering
+Execute the following powershell line in the previously-used powershell window/session (for variable persistence):
+
+test-cluster -node $env:computername -ignore network,inventory,storage
+#
+For servers/nodes on the NA.MSMPS.NET domain only: Pre-create the cluster computer objects - these actions require permissions to create objects in the NA-MSMPS domain.
+ Pre-create the cluster computer object in the same client OU that the server's computer object resides, with group membership identical to that of the server's computer object, set to "disabled".
+This computer object's name must be identical to variable $clusterName in the "Create the cluster" step below - ex: s123456dc9clu99
+The computer object must be set to "disabled" (cluster creation requires this & will enable it automatically)
+Pre-create the Availability Group Listener computer object in the same client OU that the server's computer object resides, with group membership identical to that of the server's computer object, set to "disabled".
+This computer object's name must be identical to variable $AGName in the "Create the Availability Group" step below - ex: s123456dc9ag11
+The cluster computer object ($clusterName) must be given full control of this AG listener computer object
+Requires enabling of "Advanced Features" in the Active Directory Users and Computers (ADUC) snap-in. To enable, go to View & select "Advanced Features"
+The computer object must be set to "disabled" (AG creation requires this & will enable it automatically)
+Create the cluster
+Execute the following powershell lines in the previously-used powershell window/session (for variable persistence) after substituting values for clusterName & clusterIP:
+
+$clusterName = "provide_the_desired_cluster_name_here" # <---------- SUBSTITUTION REQUIRED
+$clusterIP = "127.128.129.130"                         # <---------- SUBSTITUTION REQUIRED
+new-cluster -name $clusterName -node $env:computername -noStorage -staticAddress $clusterIP
+#
+Enable AlwaysOn on the MSSQL instance
+Execute the following powershell lines in the previously-used powershell window/session (for variable persistence):
+
+$instancename = "provide_the_instance_name_here" # <---------- SUBSTITUTION REQUIRED: if the instance is a default instance, enter "DEFAULT"
+enable-sqlalwayson -path "SQLSERVER:\SQL\$env:computername\$instancename" -force
+#
+Create mirroring endpoint
+Execute the following TSQL:
+
+DECLARE @nodeEndpoint NVARCHAR(128) = (SELECT @@servername)
+IF @nodeEndpoint LIKE '%\%' SET @nodeEndpoint = LEFT(@nodeEndpoint, CHARINDEX('\', @nodeEndpoint) - 1)
+DECLARE @cmd NVARCHAR(1024) = '
+IF NOT EXISTS (SELECT [name] FROM sys.endpoints WHERE [name] = '''+@nodeEndpoint+''') 
+        CREATE ENDPOINT ['+@nodeEndpoint+'] STATE=STARTED AS TCP (LISTENER_PORT=5022, LISTENER_IP=ALL) 
+        FOR DATABASE_MIRRORING (ROLE=ALL)
+'
+EXEC sp_executesql @cmd
+If this command fails with the message "The Database Mirroring endpoint cannot listen on port 5022 because it is in use by another process", this means a DB mirror or another AG already exists on the server.  Simply increment "LISTENER_PORT=" from 5022 to 5023, 5024, etc. until it works.  Whatever port is used, note it & replace all occurrences of "5022" in this procedure (and the "Additional Node" procedure) with the alt port.
+ Ensure temp folder exists to store a yet-to-be-created certificate backup, and remove an existing soon-to-be-duplicate backup if one exists
+Execute the following powershell lines in the previously-used powershell window/session (for variable persistence):
+
+if ($instancename -eq 'default') {$instancename_alt = 'MSSQLSERVER'} else {$instancename_alt = $instancename}
+$certBackupPathFile = 'c:\xfer\tempCertStore\AG_CERT_'+$env:computername+'_'+$instancename_alt+'.cer'
+if (!(test-path 'c:\xfer\tempCertStore')) {new-item 'c:\xfer\tempCertStore' -itemType directory} else {if (test-path $certBackupPathFile) {remove-item $certBackupPathFile}}
+#
+ Create the master certificate (key) for the MSSQL instance, then backup the certificate to disk
+Execute the following TSQL, substituting a secure password string for @SQLInstanceMasterKeyPassword:
+
+DECLARE @SQLInstanceMasterKeyPassword NVARCHAR(128) = 'eNTerRAnd0mP@$swordH3re'  -- <---INPUT REQUIRED
+DECLARE @nodeHostname NVARCHAR(128) = (SELECT @@servername)
+IF @nodeHostname LIKE '%\%' SET @nodeHostname = LEFT(@nodeHostname, CHARINDEX('\', @nodeHostname) - 1)
+DECLARE @certName NVARCHAR(128) = 'AG_CERT_'+host_name()+'_'+@@servicename       -- example result: AG_CERT_S123456DC9SW99_INSTANCE9
+DECLARE @certBackupPathFile NVARCHAR(256) = 'c:\xfer\tempCertStore\'+@certName+'.cer'
+DECLARE @cmd NVARCHAR(2048)
+USE [master] 
+SET @cmd = '
+    IF NOT EXISTS (SELECT [name] FROM sys.symmetric_keys WHERE [name] = ''##MS_DatabaseMasterKey##'') 
+        CREATE MASTER KEY ENCRYPTION BY PASSWORD='''+@SQLInstanceMasterKeyPassword+'''
+    IF NOT EXISTS (SELECT [name] FROM sys.certificates WHERE [name] = '''+@certName+''') 
+        CREATE CERTIFICATE '+@certName+'
+        WITH SUBJECT=''AlwaysOn certificate for '+@nodeHostname+''', EXPIRY_DATE=''12/31/2033''
+    BACKUP CERTIFICATE '+@certname+' TO FILE='''+@certBackupPathFile+'''
+--  IF NOT EXISTS (SELECT [name] FROM sys.endpoints WHERE [name] = '''+@nodeHostname+''') 
+--      CREATE ENDPOINT ['+@nodeHostname+'] STATE=STARTED AS TCP (LISTENER_PORT=5022, LISTENER_IP=ALL) 
+--      FOR DATABASE_MIRRORING (ROLE=ALL, AUTHENTICATION=CERTIFICATE '+@certName+', ENCRYPTION=REQUIRED ALGORITHM AES)
+    ALTER ENDPOINT '+@nodeHostname+' FOR DATABASE_MIRRORING (ROLE=ALL, AUTHENTICATION=CERTIFICATE '+@certName+', ENCRYPTION=REQUIRED ALGORITHM AES)
+ 
+'
+EXEC sp_executesql @cmd
+--
+Verify the SQL Server Browser Service is started and configured to automatically start
+Execute the following powershell lines in the previously-used powershell window/session (for variable persistence):
+
+$sqlBrowserService = get-WmiObject -class win32_service -property name, startmode, state | where-object {$_.name -eq "sqlbrowser"} 
+if ($sqlBrowserService.startmode -ne "automatic") {set-service sqlbrowser -startuptype automatic} 
+if ($sqlBrowserService.state -eq "stopped") {start-service sqlbrowser} 
+#
+Create the Availability Group
+Execute the following TSQL after substituting a secure password string for AGName, AGListenerName, AGListenerIP, AGListenerSubnet & optionally AGAvailabilityMode & AGFailoverMode:
+
+DECLARE @AGName NVARCHAR(128) = 'provide_desired_availabilityGroup_name' -- <---INPUT REQUIRED
+    -- will be the logical name used to manage it in MSSQL;
+    -- will NOT be registered in the cluster/DNS.
+    -- example: 'prod_central'
+DECLARE @AGListenerName NVARCHAR(128) = 'provide_desired_listener_name'  -- <---INPUT REQUIRED
+    -- will become the clustered network name of this AG's listener
+    -- must be unique in the domain & DNS, as it will be registered in both
+    -- can be the same as @AGName above
+    -- example: 's123456dc9ag99', or if a dedicated domain: 'prod_west_aoag'
+DECLARE @AGListenerIP NVARCHAR(16) = '127.128.129.131'                   -- <---INPUT REQUIRED
+    -- IP to assign to the clustered listener VIP.
+DECLARE @AGListenerSubnet NVARCHAR(16) = '255.0.0.0'                     -- <---INPUT REQUIRED
+    -- subnet mask of @AGListenerIP
+DECLARE @AGAvailabilityMode NVARCHAR(19) = 'asynchronous_commit'         -- <---POSSIBLE INPUT REQUIRED
+    -- possible options:
+    --     'asynchronous_commit'
+    --     'synchronous_commit'
+DECLARE @AGFailoverMode NVARCHAR(9) = 'manual'                           -- <---POSSIBLE INPUT REQUIRED
+    -- possible options:
+    --     'manual'
+    --     'automatic' <--only possible if @AGAvailabilityMode = 'synchronous_commit'
+DECLARE @SQLServerName NVARCHAR(128) = (SELECT @@servername)
+DECLARE @nodeEndpoint NVARCHAR(128) = (SELECT @@servername)
+IF @nodeEndpoint LIKE '%\%' SET @nodeEndpoint = LEFT(@nodeEndpoint, CHARINDEX('\', @nodeEndpoint) - 1)
+ 
+DECLARE @createAGTSQL NVARCHAR(1024) = '
+IF NOT EXISTS (
+    SELECT AG_IDs.ag_name FROM sys.dm_hadr_availability_group_states AS AG_states
+    JOIN sys.dm_hadr_name_id_map AS AG_IDs ON AG_states.group_id = AG_IDs.ag_id
+    WHERE AG_IDs.ag_name = '''+@AGName+'''
+)
+BEGIN
+    CREATE AVAILABILITY GROUP '+@AGName+'
+    FOR
+    REPLICA ON '''+@SQLServerName+''' WITH (
+        ENDPOINT_URL = ''TCP://'+@nodeEndpoint+':5022'',
+        AVAILABILITY_MODE = '+@AGAvailabilityMode+',
+        FAILOVER_MODE = '+@AGFailoverMode+'
+    )
+    LISTENER '''+@AGListenerName+''' (WITH IP (('''+@AGListenerIP+''','''+@AGListenerSubnet+''')), PORT = 1433)
+END
+'
+EXEC sp_executesql @createAGTSQL
+--
+Reduce the "HostRecordTTL" value of the new cluster AG listener resource
+Execute the following powershell lines in the previously-used powershell window/session (for variable persistence) after substituting the value for AGName & AGListenerName:
+
+$AGName = 'provide_availabilityGroup_name_used_above' ## <---INPUT REQUIRED
+$AGListenerName = 'provide_listener_name_used_above'  ## <---INPUT REQUIRED
+$listenerCluResName = $AGName+'_'+$AGListenerName
+$AGListenerHostRecordTTL = 300 #default is 1200
+ 
+import-module failoverClusters
+ 
+$listenerCluResName = $AGName+'_'+$AGListenerName
+$listenerCluResName_HostRecordTTL = get-clusterresource $ListenerCluResName | get-clusterparameter HostRecordTTL
+if ($ListenerCluResName_HostRecordTTL.value -ne $AGListenerHostRecordTTL) {get-clusterResource $listenerCluResName | set-clusterParameter HostRecordTTL $AGListenerHostRecordTTL -warningAction silentlyContinue; stop-clusterResource $listenerCluResName | out-null; start-clusterResource $listenerCluResName | out-null}
+#
+Verify the new Availability Group's cluster role is started
+Execute the following powershell line in the previously-used powershell window/session (for variable persistence):
+
+if ((get-clusterresource $AGName).state -eq "offline") {start-clusterresource -name $AGName}
+#
+Verify the MSSQL instance's SQL Agent service is started
+Execute the following powershell lines in the previously-used powershell window/session (for variable persistence):
+
+if ($instancename -eq "default") {$SqlAgentServiceName = "SQLSERVERAGENT"} else {$SqlAgentServiceName = "SQLAgent`$$instancename"}
+start-service $SqlAgentServiceName
+#
+LikeBe the first to like this	Labels	
+None Edit Labels
+
+Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  ·  Report a bug  ·  Atlassian News
+Choose Files

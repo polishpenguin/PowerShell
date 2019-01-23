@@ -1,0 +1,38 @@
+# installing azure powershell https://azure.microsoft.com/en-us/downloads/
+# go to command line tools, powershell
+Add-AzureAccount
+Get-AzureSubscription | ft SubscriptionName, SubscriptionId, -Autosize
+Select-AzureSubscription -SubscriptionName "Free Trial"
+Get-Azure VM
+
+
+# to create nano server in azure or PS: http://www.thomasmaurer.ch/2016/11/how-to-deploy-nano-server-in-azure/
+
+# add nano server in azure
+# add http 80 rule in network security group
+# start winrm service on pc/server you're remoting from
+Start-Service WinRM
+# add public IP to trusted hosts
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "servername or IP"
+# example: Set-Item WSMan:\localhost\Client\TrustedHosts -Value "52.173.189.131"
+
+
+
+Enter-PSSession -ComputerName 52.173.189.131  -Credential (Get-Credential)
+
+
+Set-Item wsman:localhostClientTrustedHosts '52.173.189.131' -Concatenate –Force
+
+
+
+
+$ip = "52.173.189.131"  
+$user = "$52.173.189.131\pawel"  
+Enter-PSSession -ComputerName $ip -Credential $user  
+
+
+winrm set winrm/config/client @{TrustedHosts="52.173.189.131"}
+
+winrs -r:52.173.189.131 -u:pawel -p:Bender232323 ipconfig
+
+

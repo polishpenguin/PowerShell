@@ -1,0 +1,380 @@
+Skip to content
+Skip to breadcrumbs
+Skip to header menu
+Skip to action menu
+Skip to quick search
+Quick Search
+Search
+Browse
+Pasternak, Pawel
+Dashboard
+ 
+Global Service Delivery
+ 
+…
+ 
+MSSQL Cluster Build Homepage
+Edit
+Share
+Add
+Tools
+Workflow
+MSSQL Cluster Build Homepage
+Skip to end of metadata
+Attachments:2 Added by Raumschuh, Joshua, last edited by Raumschuh, Joshua on Jan 26, 2017  (view change) Go to start of metadata
+Start Here
+SQL Cluster Build Form
+W2K3 Cluster
+W2K8, W2K8R2, W2K12 Cluster
+MSSQL2005
+MSSQL2008
+MSSQL2008R2
+MSSQL2012
+MSSQL2014
+MSSQL2016
+Notes
+	
+This page Links directly to the Product Engineering page for Creating a Microsoft Cluster found here. If any changes are required to the process please engage Application Product Engineering to have updates included.
+ 
+
+How to Create a Microsoft Windows Failover Cluster (Windows 2008-2012):
+How to Create a Microsoft Windows Failover Cluster (Windows 2008-2012):
+Failover Cluster Prerequisites
+Network Configuration Preparation
+Configure Network Adapters
+Team NICs
+Bind persistent routes to interfaces
+General Network Adapter Configuration
+Configure the Network Adapter Binding Order
+Configure Heartbeat Interface's IPv4 Properties
+Configure Private (or Other) Interface's IPv4 Properties
+Verify Network Connectivity and Name Resolution
+Verify Domain Membership
+Storage Configuration Preparation
+Install MPIO
+Configure MPIO Round Robin
+Configure Shared Disks
+Secure Drives
+Configure Cluster Services
+Enable Failover Clustering
+Validate Cluster Configuration
+Create Cluster Configuration
+Configure Cluster Networks
+Configure Quorum
+Post-Creation Configuration
+Not Required In All Domains: Move New Cluster Computer Account
+Create a Boot Delay
+Windows 2008 (NT 6.0) Only: Install KB982636 Hotfix
+Failover Cluster Prerequisites
+	SQL Cluster Install Request Form
+Before beginning, ensure you have received a completed "SQL Cluster Install Request" from from the Windows Server Failover Clustering - Design Aid page.
+Before installation of the cluster component, information regarding the following requirements must be verified:
+
+Two or more** servers running the same edition of the following OS options, configured & hardened to Savvis' current standards: 
+**Savvis-recommended max of 4 nodes per SQL cluster, but the OS-dictated absolute node maximums are:  2008= 8, 2008R2=16, 2012=64.
+Current hardening procedures can be found here
+Windows 2008 Enterprise Edition
+Windows 2008 R2 Enterprise Edition
+Windows 2012 Standard or Datacenter Edition
+A unique name for the cluster 
+The name must be unique within the domain in which the cluster will reside.  The default Savvis naming convention for clusters is [siteID][DataCenter]CLU[cluster##]; ex. s123456dc1clu01
+Networking, per server; Refer to the  Windows Server Failover Clustering - Design Aid for a visual representation: 
+Two independent NIC adapters (not just ports) - For a stand-alone server (such as HP ProLiant) it is highly recommended that the 2nd adapter is an add-on PCI-X/E NIC card which uses a different driver so as to be completely independent of the onboard NICs.
+Recommended by Microsoft: http://support.microsoft.com/kb/258750
+Example add-on PCI-X/E NIC card:  For Proliant DL360/380 G8 servers: Dual port PCI-E HP-652497-B21, ECT number 34547
+At least 1 customer-facing IP/interface; can also be utilized for Savvis management and backups
+A NIC team (active/passive) is recommended for this interface 
+At least 1 heartbeat or secondary network IP/interface per server (redundant network)
+A cross-over cable can be used for a heartbeat network, but obviously limits the cluster to 2 nodes.  In such cases an ad-hoc (during installation) 192.168.x.x subnet can be utilized, eliminating the need for IP admin, VLAN, etc.
+If layer-2/DAS is utilized for heartbeat (recommended), a heartbeat network a private VLAN & subnet must be appropriated.
+Required for 3+ cluster nodes
+DAS redundancy: A single DAS failure cannot prevent any node from communicating with other cluster nodes.
+The heartbeat network, for instance, must never be cabled to the same DAS as the only other network unless NIC teaming is employed.
+Networking, per cluster; Refer to the  Windows Server Failover Clustering - Design Aid  for a visual representation: 
+x1 cluster IP - Must be in the server nodes' management subnet.
+x1 cluster name - The standard naming convention is outlined in the procedure below ([siteID][DataCenter]CLU[cluster##] (ex. S218439SL7CLU01))
+x1 IP for EACH clustered application (1 MSSQL instance = 1 IP; 3 MSSQL instances = 3 IPs)
+Storage: 
+Quorum LUN: x1 1GB presented to ALL nodes in the cluster
+MSSQL storage:
+For Windows 2008-2008 R2: At least 1x 50GB or larger LUN (up to 16 TB by default),  dedicated to each clustered MSSQL instance, presented to ALL nodes in the cluster
+For Windows 2012: 
+Standard : At least 1x 50GB or larger LUN (up to 16 TB by default),  dedicated to each clustered MSSQL instance , presented to ALL nodes in the cluster (same as Windows 2008-2008 R2)
+Optional for MSSQL 2012 instances only : A clustered CIFS/SMB file share, on the same or different cluster, can be used by one or more (not recommended without special consideration) MSSQL 2012 instances.
+The clustered file share & MSSQL instance(s) must exist on a cluster(s) whose nodes employ NIC teaming for the network interfaces through which SQL will connect to the file share.
+The clustered file share & MSSQL instance(s) must exist on the same subnet
+The clustered file share & MSSQL instance(s) can exist on the same cluster.
+Network Configuration Preparation
+Configure Network Adapters
+	To avoid a single point of failure, each cluster node requires at least two network adapters with two or more independent networks. Validate that networking prerequisites (above) have been fulfilled, particularly that the secondary/heartbeat network is connected to a separate network adapter (unless NIC teaming is used).
+http://support.microsoft.com/kb/258750
+Team NICs
+If NIC teaming has not been chosen for this cluster, skip this section.
+
+For  Windows 2008-2008R2 , team the applicable NICs according to this procedure:  How to Team NICs on HP servers - Windows 2008 R2 or older  
+For  Windows 2012+ , team the applicable NICs according to this procedure:
+Bind persistent routes to interfaces
+On each cluster node open a powershell prompt
+Copy the command block below & paste into the powershell prompt of each server to run:
+For convenience's sake, the following powershell "script" doesn't need to be saved as .ps1 file, etc - it is a series of one-liners which can be ran individually, if needed, allowing for copy & paste ease of use.
+This script deletes all persistent routes then re-adds them with the "if #" command to specify the interface they should use.  Refer to http://support.microsoft.com/kb/2161341 for more info regarding this requirement.
+$proute_file = 'c:\xfer\interface-bound route cmds.txt'
+if (!$psversiontable) {throw write-host "Powershell v1 installed. This script requires PowerShell v2+"}
+if (test-path $proute_file) {remove-item $proute_file}
+get-childitem variable:proute_* -exclude proute_file | remove-item
+foreach ($dest in (gwmi win32_ip4persistedroutetable -property destination, mask, nexthop | sort-object destination -unique)) {$proute_dests += @($dest.destination); $proute_masks += @($dest.mask); $proute_nexthops += @($dest.nexthop)}
+function interface_num {iex "gwmi -query `"select interfaceindex from win32_ip4routetable where destination = `'$proute_currentdest`'`""}
+$i = 0 ; do {$proute_currentdest = $proute_dests[$i] ; $proute_currentint = (interface_num).interfaceindex ; $proute_int += @($proute_currentint) ; $i++ } until ($proute_dests[$i] -eq $null)
+$i = 0 ; do {$proute_delcmd = "route delete " + $proute_dests[$i] + " mask " + $proute_masks[$i] + " " + $proute_nexthops[$i] + " -p"; $proute_delcmd | out-file -append $proute_file; invoke-expression $proute_delcmd; $i++ } until ($proute_dests[$i] -eq $null)
+$i = 0 ; do {$proute_addcmd = "route add "    + $proute_dests[$i] + " mask " + $proute_masks[$i] + " " + $proute_nexthops[$i] + " if " + $proute_int[$i] + " -p" ; $proute_addcmd | out-file -append $proute_file ; invoke-expression $proute_addcmd ; $i++ } until ($proute_dests[$i] -eq $null)
+write-host "Executed commands have been logged to" $proute_file -foregroundcolor "green"
+"the end"
+Rename Network Interfaces
+
+Via "Run" or Powershell, launch ncpa.cpl
+For each Local Area Connections, right-click and:
+Click Rename and give each interface a function-appropriate name such as:
+"Private" if it is the customer-facing private network interface
+"Heartbeat" if it is the crossover or cluster-internal-VLAN connected interface
+Repeat for all cluster nodes - ensure the interface names are exactly the same on all cluster nodes.
+General Network Adapter Configuration
+Via "Run" or Powershell, launch ncpa.cpl
+Disable all unused interfaces
+Un-bind IPv6 from all enabled interfaces:
+Right-click each interface and select Properties
+Un-check "Internet Protocol Version 6 (TCP/IPv6)"
+Click OK
+If cluster nodes are stand-alone servers*, hard-set all interfaces' speed/duplex:
+*Stand-alone servers auto-negotiating speed/duplex with DAS switches may result in dropped packets. Nodes within HP c7000 enclosures (using VC-Enet modules) or Cisco UCS servers, for instance, should be left to their default values due to specific virtualized network interaction.
+Right-click each interface and select Properties
+Click the Configure button and then click the Advanced tab
+Set "Speed & Duplex" to 1000/Full
+Click OK
+Repeat on all cluster nodes
+Configure the Network Adapter Binding Order
+	Binding Order Note
+The first NIC in the binding order MUST be the NIC that communicates with the Domain Controllers
+Via "Run" or Powershell, launch ncpa.cpl
+Open the Advanced menu (press Alt to reveal the menu bar), and click Advanced Settings
+In the Connections box, make sure that your bindings are in the following order, and then click OK:
+Private (or network that communicates with AD)
+If exists, other interfaces such as "Backup", "Replication", "Public", etc.
+Heartbeat (if exists)
+Repeat on all cluster nodes
+Configure Heartbeat Interface's IPv4 Properties
+If a "Heartbeat" network is not utilized because at least 2 other networks used by the cluster, skip this section.
+
+Via "Run" or Powershell, launch  ncpa.cpl
+Right-click the "Heartbeat" interface and select Properties
+Select Internet Protocol Version 4 (TCP/IPv4), and then click Properties
+On the General tab, verify that it is configured with a static IP address, the subnet of which doesn't exist on another interface.
+If a cross-over cable is utilized for this connection, an ad-hoc private subnet can be utilized, such as 192.168.0.1, mask 255.255.255.252
+Verify no Default Gateway is configured
+Verify no DNS server addresses are configured
+Click the Advanced button.
+DNS tab:
+Verify that no DNS server addresses are defined
+Un-check "Register this connection's addresses in DNS" and "Use this connection's DNS suffix in DNS"
+WINS tab:
+Verify that no WINS addresses are defined
+Select Disable NetBIOS over TCP/IP
+Click OK
+Click OK to close IPv4 Properties
+Click Close to close Heartbeat Properties
+Repeat on all cluster nodes
+Configure Private (or Other) Interface's IPv4 Properties
+Note: If a more complex network configuration is being deployed (beyond the typical Private/Heartbeat interface roles), the "Private" interface label may not be used or certain configuration parameters below below may not apply.
+
+Via "Run" or Powershell, launch ncpa.cpl
+Right-click the "Private" (or other) interface and select Properties
+Select Internet Protocol Version 4 (TCP/IPv4), and then click Properties
+On the General tab, verify that it is configured with a static IP address, the subnet of which doesn't exist on another interface.
+Verify the Default Gateway is configured (on the correct interface)
+Verify that both DNS server addresses are configured (on the correct interface)
+Click the Advanced button.
+DNS tab: Verify that "Register this connection's addresses in DNS" is checked on the interface which communicates with the domain controllers, and is not checked on all other interfaces
+WINS tab:
+Verify that no WINS addresses are defined
+Select Disable NetBIOS over TCP/IP
+Click OK
+Click OK to close IPv4 Properties
+Click Close to close the Private (or other) adapter Properties
+Repeat for all other enabled interfaces
+Repeat on all cluster nodes
+Verify Network Connectivity and Name Resolution
+For each cluster node:
+Verify success when pinging all other nodes' IPs - Private, Heartbeat, or other (if applicable).
+Ping all other nodes' hostnames - verify only the Private/AD-facing interface's IP is returned
+Ping -a <AD-facing interface IP> of all other nodes' private interface IPs - verify the reverse lookup of the hostnames succeed
+From any cluster node, verify the proposed cluster name  is unique in the nodes' domain by running nslookup <proposedClusterName> 
+The proposed cluster name should be provided via the TDE/form.  The default Savvis naming convention for clusters is [siteID][DataCenter]CLU[cluster##]; ex. s123456dc1clu01
+Verify Domain Membership
+	All nodes in the cluster must be members of the same domain (ex: na.msmps.net, s123456-ad01.corp, etc)
+ 
+Storage Configuration Preparation
+Install MPIO
+On each server, run diskmgmt.msc 
+If each disk is duplicated 2-4 times, MPIO has not been installed and/or configured on that server; Proceed with the sub-steps below. If disks are not duplicated then MPIO has either already been installed/configured or MPIO isn't required; skip the sub-steps and proceed to the next step.
+For Windows 2008-2008 R2 , Run the following commands in powershell or cmd:
+
+servermanagercmd -install multipath-io
+mpclaim -n -i -a
+For Windows 2012 , Run the following commands in powershell:
+
+Add-WindowsFeature -Name Multipath-IO -IncludeAllSubFeature -IncludeManagementTools
+mpclaim -n -i -a
+Restart the server (from powershell or cmd: "shutdown /f /r /t 0")
+Verify that all servers have the same number of disks presented, and that disk IDs of each disk are the same across all nodes
+Example: The 1.5 TB data volume can't be "Disk 4" on node A and "Disk 7" on node B)
+Configure MPIO Round Robin
+On each cluster node, open diskmgmt.msc
+Right-click each clustered disk's left box (Disk #, state and size are shown) and select Properties.
+Click the "MPIO" tab
+Select the MPIO policy: Round Robin.
+Click OK.
+Repeat for all cluster disks.
+Repeat for all cluster disks on each server in the cluster.
+Configure Shared Disks
+	
+Only conduct these disk operations from a single server. Multiple servers accessing the same disk will lead to NTFS corruption and may confuse the cluster creation process. Don't even assign letters/mount points from other nodes!
+On the first cluster node only , open diskmgmt.msc:
+Right Click each "Unallocated" disk's left box (where Disk #, state and size are shown); Select Online (repeat for all disks)
+Right Click each "Unallocated" disk's left box (where Disk #, state and size are shown); Select Initialize Disk; the "Initialize Disk" pop-up window will appear: 
+Verify that all uninitialized disks are checked
+Select the GPT radio button
+Click OK
+Right-click each unallocated disk and click New Simple Volume; The "New Simple Volume Wizard" begins:
+Click Next
+Specify Volume Size: The default is to allocate all available disk space to the partition; Click Next
+Assign Drive Letter or Path: Use the drop-down box to change the drive letter; Click Next
+Use the drive letter Q for the quorum disk (The 1GB disk)
+Use the drive letter E for the first data disk, F for the next, and so on.
+Disks can also be Mount Points if the folder being mounted to is on a clustered disk in the same "Role"/group (MSSQL instance)
+Format Partition: Format this volume with the following settings:
+File System: NTFS
+Allocation unit size:
+64K for MSSQL data, logs, tempdb and backup volumes
+Default for Quorum (Q) or any other volumes
+Volume label (the labels below aren't mandated, but keep custom labels descriptive & orderly):
+Quorum for Quorum (Q)
+<SqlInstanceName>_Data## for MSSQL data volumes (or the ONLY volume for this instance), incrementing the ## for each instance-specific data volume
+Example: SQL01_Data01
+<SqlInstanceName>_TLog## for volumes dedicated to MSSQL transaction logs, incrementing the ## for each instanace-speciifc log volume
+<SqlInstanceName>_TempDB## for volumes dedicated to MSSQL's TempDB, incrementing the ## for each instanace-speciifc TempDB volume
+<SqlInstanceName>_Backup## for volumes dedicated to MSSQL backups, incrementing the ## for each instanace-speciifc backup volume
+Check "Perform a quick format"
+Don't check "Enable file and folder compression"
+Click Next
+Click Finish
+Repeat for each disk
+Secure Drives
+On the first cluster node  only , run the following commands in powershell - Repeat the 4-line sequence for each additional cluster disk:
+
+icacls Q:\ /remove:g "Everyone" /q
+icacls Q:\ /remove:g "CREATOR OWNER" /q
+icacls Q:\ /grant "Power Users:(OI)(CI)M" /q
+icacls Q:\ /grant "Users:(OI)(CI)RX" /q
+ 
+icacls E:\ /remove:g "Everyone" /q
+icacls E:\ /remove:g "CREATOR OWNER" /q
+icacls E:\ /grant "Power Users:(OI)(CI)M" /q
+icacls E:\ /grant "Users:(OI)(CI)RX" /q
+Scan through the output to verify no files failed to process.
+Expected output of each command: "Successfully processed 1 files; Failed processing 0 files"
+Configure Cluster Services
+Enable Failover Clustering
+The Failover Clustering Feature is not enabled by default on Windows 2012.
+
+For Windows 2008-2008 R2 , Run the following commands in powershell or cmd:
+
+pkgmgr.exe /iu:FailoverCluster-FullServer
+For Windows 2012 , Run the following commands in powershell:
+
+add-windowsfeature Failover-Clustering, RSAT-Clustering-Mgmt, RSAT-Clustering-PowerShell, RSAT-Clustering-CmdInterface
+When the command finishes the Failover Clustering feature will be available. This process might take 5-10 minutes as a result of "RSAT-Clustering-Powershell"
+Repeat for each server in the cluster.
+Validate Cluster Configuration
+On the first cluster node  only , run cluadmin.msc
+Click Validate a Configuration in the right Actions pane
+Click Next
+Enter the server name for each server in the cluster separated by semicolons and click Add; Once they have all been resolved and populated in "Selected servers" click Next
+Verify the "Run all tests" radio button is selected and click Next
+Click Next to start the validation; this will take a few minutes
+If the output is a failure you must fix the problems before continuing, if its a warning verify that the configuration is valid and click finish
+For Windows 2008 , disregard a warning for the "Network binding order" check, provided the network binding configuration earlier in this procedure was completed.
+	
+The report is saved to C:\Windows\Cluster\Reports\Validation Report <date time>*.mht
+Note: The storage test will take all disks offline as part of its validation.
+Create Cluster Configuration
+	Your user account
+Make sure that you are logged in with an account in the local domain and not your shared domain account if the cluster is in a dedicated domain!
+On the first cluster node  only , run cluadmin.msc
+Click Create Cluster... in the right-side Actions pane
+Click Next
+Select Servers: Enter the hostname of each server, separated by commas and click Add; Once populated in "Selected servers" click Next
+Access Point for Administering the Cluster:
+Cluster Name: Use the format [siteID][DataCenter]CLU[cluster##] (ex. S123456DC1CLU01)
+Networks/Address: Enter the cluster's designated IP address in the "Address" column after verifying the correct network.  Un-check all other networks, if present.
+Click Next
+Confirmation: Review the proposed configurations and click Next to proceed.
+Review the Installation report and verify no errors occurred
+Note: The summary information displayed on this screen can be used to reconfigure the cluster in the event of a disaster recovery situation. It is recommended that you save and print a hard copy to keep with the change management log at the server.
+Note: To view a detailed summary, click the View Log button or view the text file stored in the following location: %SystemRoot%\Cluster\Reports\CreateCluster.mht
+Click Finish
+Configure Cluster Networks
+On any cluster node, run cluadmin.msc
+Expand "Networks" under the cluster name
+Verify the same number of (cluster) networks equal the number of enabled interfaces on each cluster node 
+Right-click each "Cluster Network #" and select Properties
+Based on subnet, re-name each network to be the same as its corresponding interface on each node (ex: Private, Heartbeat, Public, etc) 
+Configure (or verify) cluster network communication scheme based on network role:
+Heartbeat (if utilized): Allow cluster network communication on this network
+Backup (if utilized): Do not allow cluster network communication on this network
+All others (private, public, etc):  Allow cluster network communication on this network, and check " Allow clients to connect through this network"
+Configure Quorum
+On any cluster node, run cluadmin.msc
+Right-click the cluster name (ex: s123456dc1clu01.domain.com) and select "More Actions" > "Configure Cluster Quorum Settings..."
+Verify the cluster is configured to "Node and Disk Majority
+Post-Creation Configuration
+Not Required In All Domains: Move New Cluster Computer Account
+	
+If the cluster nodes belong to a *.MSMPS.NET shared domain (apac, emea, or na.msmps.net), follow the instructions below.
+If the cluster nodes belong to a domain which utilizes the default built-in "Computers" OU for computer accounts, skip this step.
+If the cluster nodes do not belong to a *.MSMPS.NET shared domain but don't utilize the built-in "Computers" OU for computer accounts, move the new cluster computer account to the appropriate location and ensure computer account group membership uniformity.
+If the cluster nodes belong to a *.MSMPS.NET shared domain:
+
+On any cluster node, run dsa.msc to launch "Active Directory Users & Computers"
+Navigate to *msmps.net > Computers.  Locate the name of the new cluster (ex: S123456DC1CLU01)
+Move the new cluster's computer object to the customer site ID's OU:
+Right-click the new cluster's computer object and select "Move..."
+Select the appropriate customer's OU & datacenter/computers sub-OU (ex: na > ManagedHosting > Customers > S123456 > DC1)
+Click OK; verify the new cluster computer account has moved to the customer's OU.
+Add the new cluster's computer object to the customer site ID's computer group (ex: S123456_ComputersGroup) 
+Right-click the new cluster's computer object and select "Properties"
+Select the "Member Of" tab
+Click "Add..."; type the customer's site ID and select "Check Names"
+Locate & select <SiteID>_ComputersGroup and click OK
+Click "OK" to confirm the selection within "Select Groups"
+Click "OK" to apply the changes to the object's Properties
+Create a Boot Delay
+In a situation where all the cluster nodes boot up and attempt to attach to the quorum resource at the same time, the Cluster service may fail to start. For example, this may occur when power is restored to all nodes at the exact same time after a power failure. To avoid such a situation, increase or decrease the Time to Display list of operating systems setting.
+
+On each cluster node, run sysdm.cpl
+Click the Advanced tab
+Within Startup and Recovery click Settings
+Change the "Time to display list of operating systems:" from 5 to 120 on all servers but one in the cluster
+Click OK
+Click OK
+Windows 2008 (NT 6.0) Only: Install KB982636 Hotfix
+The kb982636 hotfix must be installed on all Windows 2008 Server cluster nodes ( Note: not Windows 2008 R2) to prevent an issue with the cluster not automatically failing over in the event that the active node looses network connectivity with the cluster. 
+On each cluster node:
+Copy \\<local IMP server>\hx$\Windows 2008 Software\Cluster Service Hotfix\Windows6.0-KB982636-x64.msu to C:\xfer
+Install the hotfix & reboot
+Repeat for all cluster nodes.
+LikeBe the first to like this	Labels	
+None Edit Labels
+User icon: Pawel.Pasternak
+Write a comment…
+
+Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  ·  Report a bug  ·  Atlassian News
+Choose Files

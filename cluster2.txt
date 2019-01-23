@@ -1,0 +1,316 @@
+Skip to content
+Skip to breadcrumbs
+Skip to header menu
+Skip to action menu
+Skip to quick search
+Quick Search
+Search
+Browse
+Pasternak, Pawel
+Dashboard
+ 
+Global Service Delivery
+ 
+…
+ 
+MSSQL Cluster Build Homepage
+Edit
+Share
+Add
+Tools
+Workflow
+MSSQL Cluster Build Homepage
+Skip to end of metadata
+Attachments:2 Added by Raumschuh, Joshua, last edited by Raumschuh, Joshua on Jan 26, 2017  (view change) Go to start of metadata
+Start Here
+SQL Cluster Build Form
+W2K3 Cluster
+W2K8, W2K8R2, W2K12 Cluster
+MSSQL2005
+MSSQL2008
+MSSQL2008R2
+MSSQL2012
+MSSQL2014
+MSSQL2016
+Notes
+	
+This page Links directly to the Product Engineering page for Installing MSSQL 2012 into a Microsoft Cluster. If any changes are required to the process please engage Application Product Engineering to have updates included.
+	TAKE NOTE!
+Service Account names, cluster names, or other domain object names listed in the below instructions are examples only. You must validate the names being created/requested are unique to the cluster in the domain and not already in use by another cluster in the customer solution.
+MSSQL 2012 cluster requirements:
+Create Failover Cluster
+MSSQL 2012 Installation in a Failover Cluster
+Pre-installation prep work:
+Install SQL instance on the first (primary) node:
+Install SQL instance on an additional (passive) node:
+If required: Install additional SQL instance on the first (primary) node:
+If required: Install additional SQL instance on an additional (passive) node:
+MSSQL 2012 cluster requirements:
+Supported OSes:
+Windows Server 2008 SP2 Enterprise Edition
+Windows Server 2008 R2 SP1 Enterprise Edition
+Windows Server 2012 Standard or Datacenter Edition
+Supported MSSQL editions:
+MSSQL 2012 Standard Edition (2-node cluster maximum)
+MSSQL 2012 Enterprise Edition
+Storage:
+System drive: A node's first SQL 2012 instance requires a bare minimum of  5600 MB; at least 1100 MB for each additional instance.  
+If the cluster hasn't yet been created, the cluster will require 1 shared "Quorum" LUN, 1 GB
+Each SQL instance on the cluster requires either:
+1 or more LUNs, 50 GB or more dedicated to the instance.
+A clustered Windows 2012 file server CIFS/SMB share.  Must be on the same subnet and NIC teamed across 2 DAS switches.
+Network:
+Each SQL instance on the cluster requires 1 or more IPs.
+Create Failover Cluster
+For the sake of modularity and to stay within the scope of this document, here is a link to the Failover Cluster build document:
+
+Windows 2008 or 2008 R2:
+https://confluence.savvis.net/x/TAFIAg
+Windows 2012:
+https://confluence.savvis.net/x/AtwyB
+MSSQL 2012 Installation in a Failover Cluster
+Pre-installation prep work:
+	Windows 2008 (non-R2 only) Requirement:
+MSSQL 2012 requires that Powershell 2.0 already be installed on the servers. 2.0 exists by default in Windows 2008 R2, but for Windows 2008 always verify Powershell 2.0 is installed on all cluster nodes before proceeding!
+
+How to verify Powershell 2.0 is installed for Windows 2008: Open a powershell prompt and run get-host
+Using the following link, install/remediate the MSSQL 2012 HPSA Software Policy on all cluster nodes.
+https://confluence.savvis.net/x/EIdzAw
+Create a domain group (global security group) under the customer's Users OU for the SQL Service Accounts named <SiteID><DataCenterID>SQLCLU_SG (ex. s123456sl7sqlclu_sg)
+Create a domain account for the SQL service under the customer's Users OU named: <SiteID><DataCenterID>SQL<##> (ex. s123456sl7sql01) and set the password to "Never Expire".
+If this account is on the *.msmps.net domain add this account to the customer's <SiteID>_UsersGroup group.
+Add the account created in step 3 to the group created in step 2, and make it the "Primary Group".  Remove all other group memberships except <SiteID>_UsersGroup if applicable.
+Add the group created in step 2 (ex: s123456sl7sqlclu_sg)  to the local Administrators group of each cluster node.
+If these cluster nodes are on the *.msmps.net domain the following must be completed (otherwise skip): 
+Create a computer account for the SQL VIP (Network Name) named <SiteID><DataCenterID>sql<##> (example: s123456sl7sql01) in the customer's <dc#>/computers sub-OU (ex: Managed Hosting > Customers > S123456 > SL7)
+Add this new computer account to the <SiteID>_ComputersGroup.
+Enable "Advanced Features" of Active Directory Users and Computers (ADUC). To enable, go to View & select "Advanced Features".
+Right-click the new SQL VIP computer account and select Properties.
+In the "Security" tab give the cluster computer account (auto-created during cluster creation (ex: s123456sl7clu01) full control of the new SQL VIP computer account.
+Important: Without this computer account and permission, the SQL Network Name will not start and the SQL Agent resource will not be created.
+Install SQL instance on the first (primary) node:
+Login to the first node as a Domain Admin account on the domain of which the server is a member.
+Launch C:\xfer\MSSQL2012\setup.exe
+On the "SQL Server Installation Center" window click "Installation" in the left pane.
+Select "New SQL Server failover cluster installation" in the right pane.
+Minimize the "SQL Server Installation Center" window.
+Setup Support Rules: Wait for the checks to complete then click "OK".  If there are failures or warnings you will need to resolve these issues before proceeding.
+Product Key: The product key will determine which edition is installed (Web, Std, Ent).  The installer package defaults to the Enterprise Edition product key (ends in 8H). To choose an edition other than Enterprise, enter one of the other product keys stored in the Internal password repository of password.savvis.net under "mssql-keys".  Click Next.
+License Terms: Check "I accept the license terms", un-check "Send feature usage data to Microsoft..." and click Next.
+"Install Setup Files" should automatically install the setup files and proceed to the next module without user action.
+Setup Support Rules: Wait for these additional rule checks to complete then click "Next".  If there are failures or warnings beyond what is present in the screenshot you will need to investigate or resolve these issues before proceeding.
+Setup Role: Verify "SQL Server Feature Installation" is selected and click Next.
+Feature Selection: Choose the following:
+Instance Features
+Database Engine Services
+SQL Server Replication
+Full-Text and Semantic Extractions for Search
+Data Quality Services
+(Only if requested) Analysis Services
+(Only if requested) Reporting Services
+Shared Features
+SQL Server Data Tools
+Client Tools Connectivity
+Integration Services
+Documentation Components
+Management Tools - Complete
+Leave the Shared feature directory as the default, "C:\Program Files\Microsoft SQL Server\" and click Next
+Feature Rules: Click Next if all checks passed.
+Instance Configuration:
+SQL Server Network Name: <SiteID><DCx>sql<xx>  (example: s218439sl7sql01)
+Default or Named instance.  Provide the instance name if "Named instance" is chosen.
+Instance ID: Auto-configured using Default/Named instance config.  Leave as-is.
+Instance root directory: Leave as default, "C:\Program Files\Microsoft SQL Server\"
+Click Next
+Disk Space Requirements: Click Next
+Cluster Resource Group: Click Next, accepting the SQL Server Network Name default (example: s218439sl7sql01).
+Cluster Disk Selection: Check the available cluster disk(s) you wish use for this instance and click Next
+Cluster Network Configuration: Check IPv4 and enter the IP address appropriated for this instance's VIP.  Verify the correct subnet/interface is selected.
+Server Configuration:
+Service Accounts: Enter the new SQL service account and password previously created in the "Pre-installation prep work" section (example: s218439sl7sql01) for SQL Server Agent and Database Engine.
+Collation: Only change this if the customer has explicitly requested a collation other than the default (SQL_Latin1_General_CP1_CI_AS).
+Database Engine Configuration:
+Server Configuration:
+Authentication Mode: Select "Mixed Mode" and provide a strong password to satisfy the password policy.  There is no need to document this password - it will be changed again during hardening.
+Specify SQL Server administrators: Add the local Administrators group.
+Data Directories: Change the paths if data, logs & backups are to be distributed among 2 or more drives or mountpoints.
+Filestream: Check "Enable FILESTREAM" for Transact-SQL access.
+Error Reporting: Un-check "Send Windows and SQL Error Reports to Microsoft.." and click Next
+Cluster Installation Rules: Click Next if all operations passed.
+Ready to Install: Review the summary.  If all is well, click "Install".
+Installation Progress: The installation may take up to 45 minutes.  Do not be alarmed if an inordinate amount of time is spent installing .NET patches.
+Complete: If any features failed to install, refer to the Setup Bootstrap Log linked at the bottom of the window.
+Double-click on C:\xfer\MSSQL_Hardening.sql.  This will open the "Connect to Database Engine" prompt of MSSQL Server Management Studio (SSMS); connect to the instance just installed.  The code from MSSQL_Hardening.sql will appear in the middle pane; click on this middle pane (anywhere) and press F5 to execute (or click Execute in top menu).
+The output will contain the new auto-generated password for SA.  Document this password in password.savvis.net.
+Create a clustered MSDTC resource: 
+Open Failover Cluster Management
+From "Services and Applications" right-click this SQL Server (<instance>) group and select "Add Distributed Transaction Coordinator"
+The "MSDTC-SQL Server (<instance>)" resource will now exist in the SQL Server (<instance>) group
+Right-click the "MSDTC-SQL Server (<instance>)" resource and select Properties.
+Select the "Dependencies" tab and insert a dependency for the group's "Name:" and cluster disk.
+Right-click the "MSDTC-SQL Server (<instance>)" resource and select "Bring this resource online".
+Configure DTC Network Access: 
+Launch "dcomcnfg" from cmd or the Run bar.
+Expand Component Services\Computers\My Computer\Distributed Transaction Coordinator
+Right-click "Local DTC" and select Properties
+Select the "Security" tab and select the following options:
+"Network DTC Access"
+"Allow Inbound"
+"Allow Outbound"
+"No Authentication Required"
+Click OK then Yes to restart the MS DTC service.
+Expand "Clustered DTCs"
+Repeat the same security configuration for <instance>.
+Prep AD & the instance for SIA: 
+Make AD, SPN & SQL login configurations per section "2.1.2.3.1 Configure MSSQL for SIA" in the article below:
+https://confluence.savvis.net/display/SIALC/SQL+Server+2008+Configuration/\
+Note: The "Create an SPN" section refers to "The Fully Qualified SQL Cluster Name".  This description is confusing but is referring to the SQL Instance's Network Name (example: S218439SL7SQL01, identified in Failover Cluster Management as the group's "Name: S218439SL7SQL01" resource)
+Reboot this server as 2.1.2.3.1 instructs, but do not proceed to section 2.1.2.3.2 or beyond.
+Install SQL instance on an additional (passive) node:
+Login to the additional node as a Domain Admin account on the domain of which the server is a member.
+Launch C:\xfer\MSSQL2012\setup.exe
+On the "SQL Server Installation Center" window click "Installation" in the left pane.
+Select "Add node to a SQL Server failover cluster" in the right pane.
+Minimize the "SQL Server Installation Center" window.
+Setup Support Rules: Wait for the checks to complete then click "OK".  If there are failures or warnings you will need to resolve these issues before proceeding.
+Product Key: Select "Enter the product key".  The key you enter will determine which edition is installed (Web, Std, or Ent).  The various keys are stored in the Internal password repository under "mssql-keys".  This key/edition must match what was used for this instance on the preceding node(s).  Click Next.
+License Terms: Check "I accept the license terms", un-check "Send feature usage data to Microsoft..." and click Next.
+"Install Setup Files" should automatically install the setup files and proceed to the next module without user action.
+Setup Support Rules: Wait for these additional rule checks to complete then click "Next".  If there are failures or warnings beyond what is present in the screenshot you will need to investigate or resolve these issues before proceeding.
+Cluster Node Configuration: From the drop-down menu, select the clustered SQL instance you wish to install on this additional node and click Next.
+Cluster Network Configuration: Verify that IPv4 is checked and the instance's IP configuration is auto-populated.  Click Next.
+Service Accounts: Provide the SQL service account password for SQL Server Agent and Database Engine.  Click Next.
+Error Reporting: Un-check "Send Windows and SQL Error Reports to Microsoft.." and click Next
+Add Node Rules: Click Next if all operations passed.
+Ready to Add Node: Review the summary.  If all is well, click "Install".
+Installation Progress: The installation may take up to 45 minutes.  Do not be alarmed if an inordinate amount of time is spent installing .NET patches.
+Complete: If any features failed to install, refer to the Setup Bootstrap Log linked at the bottom of the window.
+Configure DTC Network Access:
+Launch "dcomcnfg" from cmd or the Run bar.
+Expand Component Services\Computers\My Computer\Distributed Transaction Coordinator
+Right-click "Local DTC" and select Properties
+Select the "Security" tab and select the following options:
+"Network DTC Access"
+"Allow Inbound"
+"Allow Outbound"
+"No Authentication Required"
+Click OK then Yes to restart the MS DTC service.
+Restart the server to enact SIA-required Computer account changes.
+If required: Install additional SQL instance on the first (primary) node:
+Repeat steps 3-7 of the "Pre-installation prep work" for this instance.
+Login to the first node as a Domain Admin account on the domain of which the server is a member.
+Launch C:\xfer\MSSQL2012\setup.exe
+On the "SQL Server Installation Center" window click "Installation" in the left pane.
+Select "New SQL Server failover cluster installation" in the right pane.
+Minimize the "SQL Server Installation Center" window.
+Setup Support Rules: Wait for the checks to complete then click "OK".  If there are failures or warnings you will need to resolve these issues before proceeding.
+Product Updates: If prompted, click "Skip scan".  Click Next.
+"Install Setup Files" should automatically install the setup files and proceed to the next module without user action.
+Setup Support Rules: Wait for these additional rule checks to complete then click "Next".  If there are failures or warnings beyond what is present in the screenshot you will need to investigate or resolve these issues before proceeding.
+Product Key: Select "Enter the product key".  The key you enter will determine which edition is installed (Web, Std, or Ent).  The various keys are stored in the Internal password repository under "mssql-keys".  Click Next.
+License Terms: Check "I accept the license terms", un-check "Send feature usage data to Microsoft..." and click Next.
+Setup Role: Verify "SQL Server Feature Installation" is selected and click Next.
+Feature Selection: Choose the following:
+Instance Features
+Database Engine Services
+SQL Server Replication
+Full-Text and Semantic Extractions for Search
+Data Quality Services
+(Only if requested) Analysis Services
+(Only if requested) Reporting Services
+Feature Rules: Click Next if all checks passed.
+Instance Configuration:
+SQL Server Network Name: <SiteID><DCx>sql<xx>  (example: s218439sl7sql01)
+Default or Named instance.  Provide the instance name if "Named instance" is chosen.
+Instance ID: Auto-configured using Default/Named instance config.  Leave as-is.
+Instance root directory: Leave as default, "C:\Program Files\Microsoft SQL Server\"
+Click Next
+Disk Space Requirements: Click Next
+Cluster Resource Group: Click Next, accepting the SQL Server Network Name default (example: s218439sl7sql01).
+Cluster Disk Selection: Check the available cluster disk(s) you wish use for this instance and click Next
+Cluster Network Configuration: Check IPv4 and enter the IP address appropriated for this instance's VIP.  Verify the correct subnet/interface is selected.
+Server Configuration:
+Service Accounts: Enter the new SQL service account and password previously created in the "Pre-installation prep work" section (example: s218439sl7sql01) for SQL Server Agent and Database Engine.
+Collation: Only change this if the customer has explicitly requested a collation other than the default (SQL_Latin1_General_CP1_CI_AS).
+Database Engine Configuration:
+Server Configuration (tab):
+Authentication Mode: Select "Mixed Mode" and provide a strong password to satisfy the password policy.  There is no need to document this password - it will be changed again during hardening.
+Specify SQL Server administrators: Add the local Administrators group.
+Data Directories (tab): Change the paths if data, logs & backups are to be distributed among 2 or more drives or mountpoints.
+Filestream (tab): Check "Enable FILESTREAM" for Transact-SQL access.
+Analysis Services Configuration (Only If Analysis Services was selected during "Feature Selection"):
+Server Configuration (tab):
+Server Mode: The client must dictate which mode they need.  Note: the only way to change SSAS modes is to uninstall/reinstall SSAS.
+Specify which users have administrative permissions for Analysis Services:  Add the local Administrators group
+Data Directories (tab): If an OLAP/SSAS specific disk exists, prepend the OLAP paths with that drive's letter.
+Reporting Services Configuration (Only if Reporting Services was selected during "Feature Selection"):
+Reporting Servcies Native Mode: Install only
+Error Reporting: Un-check "Send Windows and SQL Error Reports to Microsoft.." and click Next
+Cluster Installation Rules: Click Next if all operations passed.
+Ready to Install: Review the summary.  If all is well, click "Install".
+Installation Progress: Additional instances take less time; 10-15 minutes.
+Complete: If any features failed to install, refer to the Setup Bootstrap Log linked at the bottom of the window.
+Double-click on C:\xfer\MSSQL_Hardening.sql.  This will open the "Connect to Database Engine" prompt of MSSQL Server Management Studio (SSMS); connect to the instance just installed.  The code from MSSQL_Hardening.sql will appear in the middle pane; click on this middle pane (anywhere) and press F5 to execute (or click Execute in top menu).
+The output will contain the new auto-generated password for SA.  Document this password in password.savvis.net.
+Create a clustered MSDTC resource: 
+Open Failover Cluster Management
+From "Services and Applications" (w2k8) or "Roles" (w2k12) right-click this SQL Server (<instance>) group and select "Add Distributed Transaction Coordinator" (w2k12: More Resources > Distributed Transaction Coordinator)
+The "MSDTC-SQL Server (<instance>)" resource will now exist in the SQL Server (<instance>) group but will be offline
+Right-click the new DTC resource and select Properties.
+Select the "Dependencies" tab and insert a dependency for the group's cluster disk and "Name:".
+Right-click the "MSDTC-SQL Server (<instance>)" resource and select "Bring this resource online".
+Configure DTC Network Access on all cluster nodes: 
+Launch "dcomcnfg" from cmd, Run bar or Powershell
+Expand Component Services\Computers\My Computer\Distributed Transaction Coordinator
+Right-click "Local DTC" and select Properties
+Select the "Security" tab and select the following options:
+"Network DTC Access"
+"Allow Inbound"
+"Allow Outbound"
+"No Authentication Required"
+Click OK then Yes to restart the MS DTC service.
+Expand "Clustered DTCs"
+Repeat the same security configuration for <Instance Name>.
+Repeat the "Local DTC" configuration process on all cluster nodes.  "Clustered DTCs" should already have propagated to all cluster nodes.
+Prep AD & the instance for SIA: 
+Make AD, SPN & SQL login configurations per section "2.1.2.3.1 Configure MSSQL for SIA" in the article below:
+https://confluence.savvis.net/display/SIALC/SQL+Server+2008+Configuration/\
+Note: The "Create an SPN" section refers to "The Fully Qualified SQL Cluster Name".  This description is confusing but is referring to the SQL Instance's Network Name (example: S218439SL7SQL01, identified in Failover Cluster Management as the group's "Name: S218439SL7SQL01" resource)
+Reboot this server as 2.1.2.3.1 instructs, but do not proceed to section 2.1.2.3.2 or beyond.
+If required: Install additional SQL instance on an additional (passive) node:
+Login to the additional node as a Domain Admin account on the domain of which the server is a member.
+Launch C:\xfer\MSSQL2012\setup.exe
+On the "SQL Server Installation Center" window click "Installation" in the left pane.
+Minimize the "SQL Server Installation Center" window.
+Setup Support Rules: Wait for the checks to complete then click "OK".  If there are failures or warnings you will need to resolve these issues before proceeding.
+Product Updates: If prompted, click "Skip scan".  Click Next.
+"Install Setup Files" should automatically install the setup files and proceed to the next module without user action.
+Setup Support Rules: Wait for these additional rule checks to complete then click "Next".  If there are failures or warnings beyond what is present in the screenshot you will need to investigate or resolve these issues before proceeding.
+Product Key: Select "Enter the product key".  The key you enter will determine which edition is installed (Web, Std, or Ent).  The various keys are stored in the Internal password repository under "mssql-keys".  This key/edition must match what was used for this instance on the preceding node(s).  Click Next.
+License Terms: Check "I accept the license terms", un-check "Send feature usage data to Microsoft..." and click Next.
+Cluster Node Configuration: From the drop-down menu, select the clustered SQL instance you wish to install on this additional node and click Next.
+Cluster Network Configuration: Verify that IPv4 is checked and the instance's IP configuration is auto-populated.  Click Next.
+Service Accounts: Provide the SQL service account password for SQL Server Agent and Database Engine.  Click Next.
+Error Reporting: Un-check "Send Windows and SQL Error Reports to Microsoft.." and click Next
+Add Node Rules: Click Next if all operations passed.
+Ready to Add Node: Review the summary.  If all is well, click "Install".
+Installation Progress: Additional instances take less time; 10-15 minutes.
+Complete: If any features failed to install, refer to the Setup Bootstrap Log linked at the bottom of the window.
+Configure DTC Network Access: 
+Launch "dcomcnfg" from cmd or the Run bar.
+Expand Component Services\Computers\My Computer\Distributed Transaction Coordinator
+Right-click "Local DTC" and select Properties
+Select the "Security" tab and select the following options:
+"Network DTC Access"
+"Allow Inbound"
+"Allow Outbound"
+"No Authentication Required"
+Click OK then Yes to restart the MS DTC service.
+Restart the server to enact SIA-required computer account changes.
+LikeBe the first to like this	Labels	
+None Edit Labels
+User icon: Pawel.Pasternak
+Write a comment…
+
+Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  ·  Report a bug  ·  Atlassian News
+Choose Files
