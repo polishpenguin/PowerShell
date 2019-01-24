@@ -11,7 +11,7 @@ Dashboard
  
 Global Service Delivery
  
-…
+â€¦
  
 MSSQL Cluster Build Homepage
 Edit
@@ -374,7 +374,7 @@ Repeat for all cluster nodes.
 LikeBe the first to like this	Labels	
 None Edit Labels
 User icon: Pawel.Pasternak
-Write a comment…
+Write a commentâ€¦
 
-Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  ·  Report a bug  ·  Atlassian News
+Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  Â·  Report a bug  Â·  Atlassian News
 Choose Files
