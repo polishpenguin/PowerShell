@@ -11,7 +11,7 @@ Dashboard
  
 Engineering Public Documentation
  
-…
+â€¦
  
 AOAG Manual Creation - Initial Node
 Share
@@ -200,5 +200,5 @@ start-service $SqlAgentServiceName
 LikeBe the first to like this	Labels	
 None Edit Labels
 
-Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  ·  Report a bug  ·  Atlassian News
+Powered by Atlassian Confluence 4.2.13, the Enterprise Wiki  Â·  Report a bug  Â·  Atlassian News
 Choose Files
