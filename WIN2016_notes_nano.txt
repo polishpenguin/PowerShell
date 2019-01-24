@@ -21,7 +21,7 @@ Set-Item WSMan:\localhost\Client\TrustedHosts -Value "servername or IP"
 Enter-PSSession -ComputerName 52.173.189.131  -Credential (Get-Credential)
 
 
-Set-Item wsman:localhostClientTrustedHosts '52.173.189.131' -Concatenate –Force
+Set-Item wsman:localhostClientTrustedHosts '52.173.189.131' -Concatenate â€“Force
 
 
 
